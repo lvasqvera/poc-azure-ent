@@ -1,0 +1,52 @@
+name: Deploy Infrastructure
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'infra/**'
+
+permissions:
+  id-token: write
+  contents: read
+
+# Evita que dos ejecuciones muevan el mismo Deployment Stack en paralelo.
+concurrency:
+  group: poc-entrevista-stack
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # --action-on-unmanage deleteAll: si un recurso se elimina del Bicep
+      #   (o se borra el stack completo), ARM elimina el recurso real.
+      #   Equivalente a un stack de CloudFormation.
+      # --deny-settings-mode denyWriteAndDelete: nadie fuera de este pipeline
+      #   puede modificar/borrar los recursos administrados, ni siquiera con
+      #   permisos de Owner en el portal.
+      # --yes: sin confirmación interactiva, requerido para correr en CI.
+      - name: Deploy deployment stack
+        run: |
+          az stack sub create \
+            --name poc-entrevista-stack \
+            --location centralindia \
+            --template-file infra/main.bicep \
+            --parameters infra/main.bicepparam \
+            --parameters pipelinePrincipalId="${{ secrets.AZURE_PIPELINE_PRINCIPAL_ID }}" \
+            --deny-settings-mode denyWriteAndDelete \
+            --deny-settings-excluded-principals "${{ secrets.AZURE_PIPELINE_PRINCIPAL_ID }}" \
+            --action-on-unmanage deleteAll \
+            --yes

@@ -1,0 +1,51 @@
+name: Validate Infrastructure
+
+on:
+  pull_request:
+    branches:
+      - master
+    paths:
+      - 'infra/**'
+      - '.github/workflows/validate.yml'
+
+# Requerido por azure/login para solicitar el token OIDC de GitHub.
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Autenticación 100% OIDC: sin client secret, sin credenciales de larga
+      # duración. azure/login intercambia el token OIDC de este PR por un
+      # access token de Azure AD de corta duración usando la federated
+      # credential configurada en el App Registration (ver README > "OIDC").
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Bicep lint / build
+        run: az bicep build --file infra/main.bicep
+
+      # Validación del Deployment Stack a nivel de suscripción usando
+      # --what-if: calcula y muestra el diff de recursos sin aplicar ningún
+      # cambio ni provisionar nada — seguro para correr en cada PR.
+      - name: Validate deployment stack (what-if)
+        run: |
+          az stack sub create \
+            --name poc-entrevista-stack \
+            --location centralindia \
+            --template-file infra/main.bicep \
+            --parameters infra/main.bicepparam \
+            --parameters pipelinePrincipalId="${{ secrets.AZURE_PIPELINE_PRINCIPAL_ID }}" \
+            --deny-settings-mode denyWriteAndDelete \
+            --deny-settings-excluded-principals "${{ secrets.AZURE_PIPELINE_PRINCIPAL_ID }}" \
+            --action-on-unmanage deleteAll \
+            --what-if

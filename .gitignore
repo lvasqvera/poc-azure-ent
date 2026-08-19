@@ -1,0 +1,31 @@
+# Artefactos compilados de Bicep (ARM JSON generado localmente)
+infra/**/*.json
+infra/**/*.arm.json
+
+# Claves SSH: nunca deben vivir en el repo. La pública tampoco, por política
+# explícita del proyecto (ver README) aunque no sea técnicamente secreta.
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+*.pub
+
+# Azure CLI / credenciales locales
+.azure/
+
+# Archivos de entorno
+.env
+.env.*
+
+# Salidas de `az deployment ... what-if` / logs locales
+*.what-if.json
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editores
+.vscode/
+.idea/
+*.swp
