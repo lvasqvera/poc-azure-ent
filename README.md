@@ -52,7 +52,7 @@ infra/
     budget.bicep              # Budget mensual con alerta
     cloud-init.yaml            # user-data: instala y arranca Nginx
 .github/workflows/
-  validate.yml             # PR → master: bicep build + stack what-if
+  validate.yml             # PR → master: bicep build + az stack sub validate
   deploy.yml               # push → master: az stack sub create
 ```
 
@@ -193,13 +193,21 @@ az keyvault secret set \
   --name "ssh-public-key" \
   --file ~/.ssh/id_ed25519.pub
 
-# El Service Principal del pipeline también necesita leer este vault de
-# bootstrap para que az.getSecret() se resuelva en CI:
-az role assignment create \
-  --assignee "$APP_ID" \
-  --role "Key Vault Secrets User" \
-  --scope "$(az keyvault show --name $BOOT_KV --query id -o tsv)"
+# CLAVE: az.getSecret() en un .bicepparam no lo resuelve tu identidad ni la
+# del pipeline — lo resuelve un servicio interno de Azure Resource Manager
+# (un principal first-party que vive en un tenant de Microsoft, no en el
+# tuyo, así que no se le puede dar acceso con un role assignment normal).
+# Un vault RBAC necesita este flag explícito para permitirle esa lectura:
+az keyvault update \
+  --name "$BOOT_KV" \
+  --enabled-for-template-deployment true
 ```
+
+Sin `--enabled-for-template-deployment true` el deploy falla en el preflight
+con `KeyVaultParameterReferenceSecretRetrieveFailed / Access denied to first
+party service` — este flag es la única forma soportada de resolver esto, y
+es independiente de `enableRbacAuthorization` (siguen sin existir access
+policies legacy en el vault).
 
 Luego edita `infra/main.bicepparam` reemplazando `<SUBSCRIPTION_ID>`,
 `<BOOTSTRAP_RESOURCE_GROUP>` y `<BOOTSTRAP_KEYVAULT_NAME>` por los valores de
@@ -219,22 +227,29 @@ Solo hay que completar dos cosas:
 
 ## Validar un cambio grande antes de aplicarlo (local)
 
+> `az stack sub create` **no** soporta `--what-if` ni `--confirm-with-what-if`
+> en el CLI actual (probado en 2.85.0) — son flags que existen para
+> `az deployment ... create`, pero no llegaron todavía a `az stack sub
+> create`. El comando real y soportado para esto es `az stack sub validate`:
+> corre el mismo preflight de ARM (valida la plantilla, los parámetros y la
+> referencia al Key Vault) sin crear ni tocar ningún recurso.
+
 ```bash
-az stack sub create \
+az stack sub validate \
   --name poc-entrevista-stack \
   --location centralindia \
   --template-file infra/main.bicep \
   --parameters infra/main.bicepparam \
   --deny-settings-mode denyWriteAndDelete \
-  --action-on-unmanage deleteAll \
-  --confirm-with-what-if
+  --action-on-unmanage deleteAll
 ```
 
-Esto muestra el diff completo (qué se crea, modifica o **borra**, incluyendo
-recursos que el stack eliminaría por haber salido del Bicep) y pide
-confirmación interactiva antes de aplicar. Es el equivalente de
-`terraform plan` + `apply` en un solo comando, pero con el `apply` gated por
-tu confirmación manual.
+Si termina con `"error": null` en la salida, el plan es válido y el próximo
+`az stack sub create` con los mismos parámetros debería aplicarse sin
+sorpresas. No imprime un diff recurso por recurso (a diferencia de un
+`what-if` real) — para eso, la alternativa es correr `az deployment sub
+what-if` apuntando al mismo `main.bicep`/`main.bicepparam`, que sí soporta
+ese flag pero valida como un deployment normal, no como stack.
 
 ## Destruir todo el ambiente
 

@@ -34,12 +34,15 @@ jobs:
       - name: Bicep lint / build
         run: az bicep build --file infra/main.bicep
 
-      # Validación del Deployment Stack a nivel de suscripción usando
-      # --what-if: calcula y muestra el diff de recursos sin aplicar ningún
-      # cambio ni provisionar nada — seguro para correr en cada PR.
-      - name: Validate deployment stack (what-if)
+      # Validación del Deployment Stack a nivel de suscripción con
+      # `az stack sub validate`: corre el mismo preflight que `create` (ARM
+      # valida la plantilla, los parámetros y la referencia a Key Vault)
+      # pero no crea ni modifica ningún recurso — seguro para correr en
+      # cada PR. (`--what-if` / `--confirm-with-what-if` no existen para
+      # `az stack sub create` en el CLI actual; este es el comando real.)
+      - name: Validate deployment stack
         run: |
-          az stack sub create \
+          az stack sub validate \
             --name poc-entrevista-stack \
             --location centralindia \
             --template-file infra/main.bicep \
@@ -47,5 +50,4 @@ jobs:
             --parameters pipelinePrincipalId="${{ secrets.AZURE_PIPELINE_PRINCIPAL_ID }}" \
             --deny-settings-mode denyWriteAndDelete \
             --deny-settings-excluded-principals "${{ secrets.AZURE_PIPELINE_PRINCIPAL_ID }}" \
-            --action-on-unmanage deleteAll \
-            --what-if
+            --action-on-unmanage deleteAll
