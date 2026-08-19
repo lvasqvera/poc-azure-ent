@@ -32,10 +32,12 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
     accessPolicies: []
     enableSoftDelete: true
     softDeleteRetentionInDays: 7
-    // Purge protection deshabilitada a propósito: este vault vive dentro del
-    // Deployment Stack y debe poder purgarse limpiamente si se recrea el POC
-    // tras un `az stack sub delete`. Ver README > "Recrear el entorno".
-    enablePurgeProtection: false
+    // Esta suscripción exige purge protection habilitada en todo Key Vault
+    // nuevo (el deploy falla con BadRequest si se intenta enablePurgeProtection:
+    // false). Implica que si se borra el stack y se redespliega, el nombre
+    // determinístico del vault puede chocar con uno soft-deleted durante la
+    // ventana de retención — ver README > "Recrear el entorno".
+    enablePurgeProtection: true
     // Acceso público habilitado a propósito: es un vault de demo sin Private
     // Endpoint (fuera de alcance para un POC de $5/mes). El acceso real está
     // protegido por RBAC (enableRbacAuthorization) más abajo, no por red.

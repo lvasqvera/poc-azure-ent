@@ -263,10 +263,16 @@ az stack sub delete \
 Borra el Resource Group `POC-Entrevista` completo (VM, red, NSG, Key Vault,
 budget) y el propio registro del stack. No queda nada facturable atrás.
 
-> El Key Vault gestionado tiene soft-delete habilitado (requisito de Azure) y
-> `enablePurgeProtection: false`. Si vas a redesplegar rápido con el mismo
-> nombre, puede que necesites purgarlo primero:
-> `az keyvault purge --name <nombre-del-kv> --location centralindia`.
+> El Key Vault gestionado tiene soft-delete **y** purge protection habilitados
+> (esta suscripción no permite crear vaults con `enablePurgeProtection: false`
+> — es un requisito de gobernanza a nivel de tenant, no una elección del
+> Bicep). Con purge protection activa, `az keyvault purge` no funciona: el
+> vault queda en estado soft-deleted y solo desaparece solo al cabo de los 7
+> días de retención (`softDeleteRetentionInDays`). Si necesitas redesplegar
+> con el mismo `namePrefix` antes de que pase ese tiempo, el nombre
+> determinístico del Key Vault (`uniqueString(resourceGroup().id)`) puede
+> chocar con el vault soft-deleted anterior — en ese caso espera a que expire
+> la retención, o cambia `namePrefix` temporalmente.
 
 ## Costo y región: por qué `centralindia`
 
